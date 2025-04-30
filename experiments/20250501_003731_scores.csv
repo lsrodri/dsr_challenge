@@ -1,0 +1,2 @@
+model,train_r2,val_r2,train_mean_squared_error,val_mean_squared_error,train_mean_absolute_error,val_mean_absolute_error
+linear,0.4983287505558803,-0.21579875087192052,0.7539687893109184,1.297541884515209,0.6868418830116381,0.9062478468060355

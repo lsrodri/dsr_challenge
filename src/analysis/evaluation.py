@@ -1,4 +1,6 @@
 from sklearn.model_selection import cross_validate
+import pandas as pd
+
 
 
 def evaluate_pipelines(pipe_dict, X, y, cv=5,

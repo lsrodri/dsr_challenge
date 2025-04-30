@@ -65,7 +65,7 @@ def get_models(random_state: int = 42) -> dict:
         'gb': GradientBoostingRegressor(n_estimators=100, random_state=random_state),
         'hist_gb': HistGradientBoostingRegressor(max_iter=100, random_state=random_state),
         'gp': GaussianProcessRegressor(),
-        'mlp': MLPRegressor(hidden_layer_sizes=(100,), max_iter=500, random_state=random_state)
+       'mlp': MLPRegressor(hidden_layer_sizes=(100,), max_iter=500, random_state=random_state)
     }
 
     # Conditionally include third-party boosters
@@ -74,6 +74,6 @@ def get_models(random_state: int = 42) -> dict:
     if LGBMRegressor is not None:
         models['lgbm'] = LGBMRegressor(n_estimators=100, random_state=random_state)
     if CatBoostRegressor is not None:
-        models['catboost'] = CatBoostRegressor(iterations=100, verbose=False, random_state=random_state)
+        models['catboost'] = CatBoostRegressor(iterations=100, verbose=False, random_state=random_state) 
 
     return models

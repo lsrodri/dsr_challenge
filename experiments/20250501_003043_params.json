@@ -1,0 +1,19 @@
+{
+  "drop_cols": [
+    "week_start_date"
+  ],
+  "city_col": "city",
+  "cycle_cfg": {
+    "column": "weekofyear",
+    "period": 52
+  },
+  "outlier_cfg": {
+    "columns": null,
+    "method": "zscore",
+    "threshold": 3.0
+  },
+  "models": [
+    "linear"
+  ],
+  "cv_folds": 5
+}

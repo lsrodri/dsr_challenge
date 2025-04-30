@@ -47,68 +47,99 @@ from sklearn.base import BaseEstimator, TransformerMixin
 import numpy as np
 import pandas as pd
 
+
 class OutlierRemover(BaseEstimator, TransformerMixin):
     """
-    Remove outliers using IQR or Z-score.
+    Removes rows containing outliers, detected column-wise by either
+    the Inter-Quartile Range (IQR) rule or the Z-score rule.
 
     Parameters
     ----------
-    columns : str or list of str
-    remove  : bool
-    method  : {'iqr', 'zscore'}
-    threshold : float
+    columns   : str | list[str] | None, default=None
+        Column(s) to check.  If None, the transformer is a no-op
+        (it returns the data unchanged).
+    remove    : bool, default=True
+        Whether to drop the outlier rows.  If False, the transformer
+        is also a no-op.
+    method    : {'iqr', 'zscore'}, default='iqr'
+        Outlier detection rule.
+    threshold : float, default=1.5
+        • IQR  : multiplier of the inter-quartile range  
+        • Z-score : maximum absolute Z-score
     """
-    def __init__(self,
-                 columns=None,
-                 remove: bool = True,
-                 method: str = 'iqr',
-                 threshold: float = 1.5):
-        # store the raw parameters exactly as given
+
+    def __init__(
+        self,
+        columns: Union[str, List[str], None] = None,
+        remove: bool = True,
+        method: str = "iqr",
+        threshold: float = 1.5,
+    ):
+        # store parameters exactly as passed (for sklearn.clone)
         self.columns = columns
         self.remove = remove
-        self.method = method        # ⚠️ do NOT .lower() here
+        self.method = method
         self.threshold = threshold
 
-        # these will be filled in fit()
-        self.quartiles_ = {}
-        self.means_ = {}
-        self.stds_ = {}
+        # learned statistics
+        self.quartiles_: dict = {}
+        self.means_: dict = {}
+        self.stds_: dict = {}
 
+    # --------------------------------------------------------------------- #
+    #                                FIT                                    #
+    # --------------------------------------------------------------------- #
     def fit(self, X: pd.DataFrame, y=None):
-        X = X.copy()
-        # normalize the method value once here
-        method = self.method.lower()
+        # if no columns specified or removal disabled, nothing to learn
+        if self.columns is None or not self.remove:
+            return self
+
         cols = [self.columns] if isinstance(self.columns, str) else self.columns
+        method = self.method.lower()
+
         for col in cols:
-            if method == 'iqr':
-                Q1, Q3 = X[col].quantile(0.25), X[col].quantile(0.75)
-                self.quartiles_[col] = (Q1, Q3)
-            elif method == 'zscore':
+            if method == "iqr":
+                q1 = X[col].quantile(0.25)
+                q3 = X[col].quantile(0.75)
+                self.quartiles_[col] = (q1, q3)
+            elif method == "zscore":
                 self.means_[col] = X[col].mean()
-                self.stds_[col]  = X[col].std(ddof=0)
+                self.stds_[col] = X[col].std(ddof=0)
             else:
                 raise ValueError("method must be 'iqr' or 'zscore'")
+
         return self
 
-    def transform(self, X: pd.DataFrame):
-        if not self.remove:
+    # --------------------------------------------------------------------- #
+    #                              TRANSFORM                                #
+    # --------------------------------------------------------------------- #
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        # short-circuit when disabled or no columns given
+        if not self.remove or self.columns is None:
             return X.copy().reset_index(drop=True)
 
         X = X.copy()
         mask = pd.Series(True, index=X.index)
         method = self.method.lower()
 
-        for col in self.quartiles_ if method == 'iqr' else self.means_:
-            if method == 'iqr':
-                Q1, Q3 = self.quartiles_[col]
-                IQR = Q3 - Q1
-                lower, upper = Q1 - self.threshold * IQR, Q3 + self.threshold * IQR
+        columns = (
+            self.quartiles_.keys() if method == "iqr" else self.means_.keys()
+        )
+
+        for col in columns:
+            if method == "iqr":
+                q1, q3 = self.quartiles_[col]
+                iqr = q3 - q1
+                lower = q1 - self.threshold * iqr
+                upper = q3 + self.threshold * iqr
                 mask &= X[col].between(lower, upper)
-            else:  # zscore
-                mean, std = self.means_[col], self.stds_[col]
+            else:  # z-score
+                mean = self.means_[col]
+                std = self.stds_[col]
                 mask &= ((X[col] - mean).abs() / std) <= self.threshold
 
         return X.loc[mask].reset_index(drop=True)
+
 
 
 
