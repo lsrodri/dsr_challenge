@@ -66,7 +66,7 @@ class CityBasedImputer(BaseEstimator, TransformerMixin):
         Returns:
         self: Returns the transformer instance.
         """
-        
+
         #check if X['city'] has string values
         if X[self.city_column].dtype == 'object':
             # Encode the city column to numerical values
@@ -117,3 +117,18 @@ class CityBasedImputer(BaseEstimator, TransformerMixin):
         pd.DataFrame: Transformed DataFrame with missing values imputed.
         """
         return self.fit(X, y).transform(X)
+    
+class CityMapTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, city_column='city', mapping={'sj': 0, 'iq': 1}):
+        self.city_column = city_column
+        self.mapping = mapping
+        
+    def fit(self, X, y=None):
+        # No fitting needed for this transformer
+        return self
+    
+    def transform(self, X):
+        X = X.copy()  # Create a copy to avoid modifying the original
+        if X[self.city_column].dtype == 'object':  # Only transform if it's a string
+            X[self.city_column] = X[self.city_column].map(self.mapping)
+        return X
