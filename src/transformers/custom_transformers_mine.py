@@ -3,28 +3,42 @@ from typing import Union, List
 import numpy as np
 import pandas as pd
 
+from sklearn.preprocessing import OneHotEncoder
+
 class CitySelector(BaseEstimator, TransformerMixin):
     """
-    A custom transformer that selects rows for a given city, or returns all rows if city=None.
-    
+    Selects rows for a given city, or one-hot–encodes 'city' when city=None.
+
     Parameters
     ----------
     city : str or None, default=None
-        - If a string like 'sj' or 'iq', only rows where df['city'] == city are returned.
-        - If None, the full DataFrame is passed through.
+        - If a code like 'sj' or 'iq', filter to that city.
+        - If None, return all rows with 'city' one-hot encoded.
     """
-    def __init__(self, city=None):
+    def __init__(self, city: str = None):
         self.city = city
+        self.encoder_ = None
+        self.categories_ = None
 
-    def fit(self, X, y=None):
-        # No fitting necessary
+    def fit(self, X: pd.DataFrame, y=None):
+        if self.city is None:
+            # fit OneHotEncoder on all observed cities
+            self.encoder_ = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+            reshaped = X[['city']]
+            self.encoder_.fit(reshaped)
+            self.categories_ = self.encoder_.categories_[0].tolist()
         return self
 
-    def transform(self, X):
-        # Expect X to be a pandas DataFrame
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        X = X.copy()
         if self.city is None:
-            return X.copy()
-        # Filter and reset index so downstream transformers see a clean index
+            # one-hot encode with fitted encoder
+            encoded = self.encoder_.transform(X[['city']])
+            col_names = [f'city_{cat}' for cat in self.categories_]
+            df_enc = pd.DataFrame(encoded, columns=col_names, index=X.index)
+            X = pd.concat([X.drop(columns=['city']), df_enc], axis=1)
+            return X.reset_index(drop=True)
+        # else filter rows
         return X[X['city'] == self.city].reset_index(drop=True)
     
 
@@ -111,3 +125,38 @@ class OutlierRemover(BaseEstimator, TransformerMixin):
                 mask &= z <= self.threshold
 
         return X.loc[mask].reset_index(drop=True)
+
+
+class CyclicTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer to encode a cyclical column (like week of year) into sine and cosine features.
+
+    Parameters
+    ----------
+    column : str
+        Name of the column to transform.
+    period : int
+        The period of the cycle (e.g., 52 for weeks in a year).
+    drop_original : bool, default=True
+        If True, drop the original column after transformation.
+    """
+    def __init__(self, column: str, period: int, drop_original: bool = True):
+        self.column = column
+        self.period = period
+        self.drop_original = drop_original
+
+    def fit(self, X: pd.DataFrame, y=None):
+        # No fitting necessary
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        X = X.copy()
+        # compute angle
+        angles = 2 * np.pi * X[self.column] / self.period
+        # add sine and cosine columns
+        X[f"{self.column}_sin"] = np.sin(angles)
+        X[f"{self.column}_cos"] = np.cos(angles)
+        # optionally drop original
+        if self.drop_original:
+            X = X.drop(columns=[self.column])
+        return X.reset_index(drop=True)

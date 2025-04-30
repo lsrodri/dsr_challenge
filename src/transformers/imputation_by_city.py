@@ -1,7 +1,6 @@
-
 ## imputation function
 
-class CityBasedImputer:
+class CityBasedImputer(BaseEstimator, TransformerMixin):
     '''
     Impute missing column values with mean, differentiated by city.
 
@@ -44,6 +43,3 @@ class CityBasedImputer:
         
         return data_imputed
 
-    def fit_transform(self, data):
-        self.fit(data)
-        return self.transform(data)
