@@ -37,3 +37,5 @@ class DropColumnsTransformer(BaseEstimator, TransformerMixin):
         if self.columns_to_drop:
             X.drop(columns=self.columns_to_drop, inplace=True, errors='ignore')
         return X
+    
+    
