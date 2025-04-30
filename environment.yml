@@ -1,0 +1,18 @@
+name: dsr_challenge-env
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.12           # or your desired version
+  - pip                    # needed to run pip installs
+  - numpy
+  - pandas
+  - scikit-learn
+  - matplotlib             # if you do any plotting
+  - xgboost                # if you’re using XGBoost
+  - lightgbm               # if you’re using LightGBM
+  - catboost               # if you’re using CatBoost
+
+  - pip:
+    - -r requirements.txt
