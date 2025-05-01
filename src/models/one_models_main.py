@@ -21,7 +21,7 @@ from transformers.custom_transformers_mine import (
 )
 
 from models.models import get_models
-from analysis.evaluation import evaluate_pipelines, evaluate_pipelines_timeaware
+from analysis.evaluation import evaluate_pipelines
 from analysis.persistence import save_results
 
 
@@ -56,14 +56,11 @@ CONFIG = {
             "station_min_temp_c",
             "station_precip_mm",
         ],
-        "remove": False,
+        "remove": True,
         "method": "zscore",
         "threshold": 3.0,
     },
     "cv_folds": 5,
-    # ←── new keys for time-aware splitting ──→
-    "ts_test_size": 20,  # how many samples in each test fold
-    "ts_max_train_size": None,  # or an int to cap the training window
 }
 
 
@@ -91,49 +88,6 @@ def build_pipelines(models, cfg):
             ]
         )
     return pipes
-
-
-def run_city_experiment(city_code, df_train, df_test, models, config):
-    """
-    1) CV on df_train, select best by val_r2
-    2) Retrain best on full df_train
-    3) Predict on df_test
-    4) Return a DataFrame with city,year,weekofyear,total_cases
-    """
-    X = df_train.drop(columns=["total_cases"])
-    y = df_train["total_cases"]
-
-    pipelines = build_pipelines(models, config)
-
-    #    scores = evaluate_pipelines(pipelines, X, y, cv=config["cv_folds"])
-    # 3) time-aware CV
-    print("Running time-aware cross-validation…")
-    scores = evaluate_pipelines_timeaware(
-        pipelines,
-        X,
-        y,
-        n_splits=CONFIG["cv_folds"],
-        test_size=CONFIG["ts_test_size"],
-        max_train_size=CONFIG["ts_max_train_size"],
-        scoring=("r2", "neg_mean_squared_error", "neg_mean_absolute_error"),
-    )
-
-    print(f"\n=== CV RESULTS for city={city_code} ===")
-    print(scores)
-
-    best_model = scores.sort_values("train_r2", ascending=False).iloc[0]["model"]
-    print(f"--> Best model for {city_code}: {best_model}")
-
-    best_pipe = pipelines[best_model]
-    best_pipe.fit(X, y)
-
-    # get predictions (log scale) and invert
-    preds_log = best_pipe.predict(df_test)
-    preds = np.expm1(preds_log).round().astype(int)
-
-    sub = df_test[["city", "year", "weekofyear"]].copy()
-    sub["total_cases"] = preds
-    return sub
 
 
 def main():
@@ -197,9 +151,7 @@ def main():
     # 6) Write submission.csv
     # ────────────────────────────────────────────────────────
     submission.to_csv(
-
-        "src/data/predictions/two_models_time_aware_CV_best_train_r2.csv", index=False
-
+        "src/data/predictions/one_model_outliers_removed_best_train_r2.csv", index=False
     )
     print("✅ Wrote submission.csv")
 

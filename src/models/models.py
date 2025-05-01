@@ -41,13 +41,13 @@ except ImportError:
 
 
 def get_models(random_state: int = 42) -> dict:
-    """
-    Return a dictionary of regression model instances.
+    """_summary_
 
-    Returns
-    -------
-    dict
-        Keys are short names; values are instantiated regressors.
+    Args:
+        random_state (int, optional): _description_. Defaults to 42.
+
+    Returns:
+        dict: _description_
     """
     models = {
         "linear": LinearRegression(),
