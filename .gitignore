@@ -9,6 +9,9 @@ __pycache__/
 # Experiments
 experiments/*
 
+# predictions
+src/data/predictions
+
 # Distribution / packaging
 .Python
 build/
