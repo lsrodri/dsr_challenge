@@ -14,6 +14,7 @@ from sklearn.model_selection import cross_validate, TimeSeriesSplit
 from sklearn.ensemble import RandomForestRegressor
 
 from transformers.transformers_l import DropColumnsTransformer, CityBasedImputer
+from transformers.interpolation_imputation import InterpolationImputer
 from transformers.custom_transformers_mine import (
     CitySelector,
     CyclicTransformer,
