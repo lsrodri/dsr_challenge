@@ -1,5 +1,6 @@
 from sklearn.base import BaseEstimator, TransformerMixin
 import pandas as pd
+import numpy as np
 
 class DropColumnsTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, columns_to_drop=None):
@@ -132,3 +133,68 @@ class CityMapTransformer(BaseEstimator, TransformerMixin):
         if X[self.city_column].dtype == 'object':  # Only transform if it's a string
             X[self.city_column] = X[self.city_column].map(self.mapping)
         return X
+    
+class RollingAverageTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, columns, window, city_column='city'):
+        self.columns = columns
+        self.window = window
+        self.city_column = city_column
+        
+    def fit(self, X, y=None):
+        # Store column indices if X is a DataFrame
+        if hasattr(X, 'columns'):
+            self.column_indices_ = {col: i for i, col in enumerate(X.columns) 
+                                   if col in self.columns}
+            self.feature_names_ = list(X.columns)
+        else:
+            # If X is already a numpy array, use the column positions directly
+            self.column_indices_ = {col: col for col in self.columns 
+                                   if isinstance(col, int) and col < X.shape[1]}
+        return self
+    
+    def transform(self, X):
+        # Convert to DataFrame if it's a numpy array
+        is_numpy = isinstance(X, np.ndarray)
+        if is_numpy:
+            # If input is numpy array, convert to DataFrame
+            X_df = pd.DataFrame(X, columns=self.feature_names_ if hasattr(self, 'feature_names_') else None)
+        else:
+            X_df = X.copy()
+        
+        # Create new rolling average columns, grouped by city
+        for col, idx in self.column_indices_.items():
+            new_col_name = f'{col}_rolling_avg_{self.window}'
+            
+            # Initialize the new column with NaN values
+            X_df[new_col_name] = np.nan
+            
+            # For each city, compute rolling averages separately
+            for city in X_df[self.city_column].unique():
+                # Create a city mask
+                city_mask = X_df[self.city_column] == city
+                
+                # Get indices for this city
+                city_indices = X_df[city_mask].index
+                
+                # Compute rolling average for this city only
+                city_rolling = X_df.loc[city_mask, col].rolling(
+                    window=self.window, min_periods=1).mean()
+                
+                # Assign the rolling values back to the original DataFrame
+                X_df.loc[city_indices, new_col_name] = city_rolling.values
+        
+        # Return numpy array if input was numpy array
+        if is_numpy:
+            return X_df.values
+        return X_df
+    
+    def get_feature_names_out(self, input_features=None):
+        """Return feature names for output features."""
+        if input_features is None and hasattr(self, 'feature_names_'):
+            input_features = self.feature_names_
+        
+        output_features = list(input_features)
+        for col in self.columns:
+            output_features.append(f'{col}_rolling_avg_{self.window}')
+        
+        return np.array(output_features)
