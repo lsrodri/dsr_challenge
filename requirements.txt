@@ -1,0 +1,15 @@
+Non-linear learners: Random forests, gradient-boosted trees (XGBoost, CatBoost), or kernel methods can flexibly model interactions and thresholds in weather/dengue dynamics.
+
+Time-aware cross-validation: Use a rolling-window or expanding-window split rather than random K-fold to better mimic forecasting on future weeks.
+
+Rich feature engineering:
+
+Lagged targets (last week’s cases, 2-week moving average)
+
+Weather anomalies (departures from long-term monthly means)
+
+Interaction terms (e.g. precipitation × humidity)
+
+Hyperparameter search: A randomized or grid search for regularization strengths (alpha, l1_ratio) or tree-based parameters (max_depth, learning_rate) may yield additional gains.
+
+Outlier strategy: Experiment with turning off outlier removal entirely, or using a milder threshold—some extreme weeks might carry important early-outbreak signals rather than noise.
