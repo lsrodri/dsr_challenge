@@ -1,13 +1,10 @@
 # main.py
 
 import multiprocessing as mp
-import platform
 
-# use forkserver on Unix-like systems and spawn on Windows
-if platform.system() == "Windows":
-    mp.set_start_method("spawn", force=True)
-else:
-    mp.set_start_method("forkserver", force=True)
+# Use forkserver instead of fork
+mp.set_start_method("forkserver", force=True)
+
 
 import sys
 from pathlib import Path
@@ -23,14 +20,7 @@ from sklearn.impute import SimpleImputer  # ← add this import
 
 
 # your custom transformers
-from transformers.rolling_mean_imputation import (
-    check_imputation,
-    CityWiseRollingMeanImputer,
-)
-from transformers.transformers_l import (
-    DropColumnsTransformer,
-    CityBasedImputer,
-)
+from transformers.transformers_l import DropColumnsTransformer, CityBasedImputer
 from transformers.custom_transformers_mine import (
     CitySelector,
     CyclicTransformer,
@@ -62,12 +52,8 @@ def build_pipelines(models, config):
                     "drop_cols1",
                     DropColumnsTransformer(columns_to_drop=config["drop_cols1"]),
                 ),
+                ("imputer_city", CityBasedImputer(city_column=config["city_col"])),
                 ("city_sel", CitySelector(city=None)),
-                # ("imputer_city", CityBasedImputer(city_column=config["city_col"])),
-                (
-                    "imputer_city",
-                    CityWiseRollingMeanImputer(),
-                ),
                 (
                     "drop_cols2",
                     DropColumnsTransformer(columns_to_drop=config["drop_cols2"]),
@@ -141,6 +127,37 @@ def main():
         "cv_folds": 5,
     }
     save_results(df_scores, params)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # e) Retrain best model on full train set, predict on test, write submission
+    # ──────────────────────────────────────────────────────────────────────────
+    BEST_MODEL = "catboost"
+
+    if BEST_MODEL not in pipelines:
+        raise ValueError(f"BEST_MODEL = {BEST_MODEL} not found in pipelines")
+
+    print(f"\nRetraining `{BEST_MODEL}` on full training set and scoring on test…")
+    best_pipe = pipelines[BEST_MODEL]
+    best_pipe.fit(X, y)
+
+    # load test features only
+    test = pd.read_csv("src/data/raw/dengue_features_test.csv")
+    X_test = test.copy()
+
+    # get log-scale predictions, invert with expm1
+    y_pred_log = best_pipe.predict(X_test)
+    y_pred = np.expm1(y_pred_log)
+
+    # build submission DataFrame
+    submission = test[["city", "year", "weekofyear"]].copy()
+    # round to nearest integer case counts
+    submission["total_cases"] = np.rint(y_pred).astype(int)
+
+    # write CSV
+    submission.to_csv(
+        "src/data/predictions/catboost_outliers_removed_z_score_joint.csv", index=False
+    )
+    print("Wrote submission.csv")
 
 
 if __name__ == "__main__":

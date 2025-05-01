@@ -1,0 +1,37 @@
+{
+  "drop_cols1": [
+    "city"
+  ],
+  "city_col": "city",
+  "cycle_cfg": {
+    "column": "weekofyear",
+    "period": 52
+  },
+  "outlier_cfg": {
+    "columns": null,
+    "method": "zscore",
+    "threshold": 3.0
+  },
+  "models": [
+    "linear",
+    "ridge",
+    "lasso",
+    "elasticnet",
+    "bayesianridge",
+    "sgd",
+    "knn",
+    "svr",
+    "kernel_ridge",
+    "decision_tree",
+    "random_forest",
+    "extra_trees",
+    "gb",
+    "hist_gb",
+    "gp",
+    "mlp",
+    "xgb",
+    "lgbm",
+    "catboost"
+  ],
+  "cv_folds": 5
+}

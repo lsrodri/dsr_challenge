@@ -5,6 +5,7 @@ import pandas as pd
 
 from sklearn.preprocessing import OneHotEncoder
 
+
 class CitySelector(BaseEstimator, TransformerMixin):
     """
     Selects rows for a given city, or one-hot–encodes 'city' when city=None.
@@ -15,6 +16,7 @@ class CitySelector(BaseEstimator, TransformerMixin):
         - If a code like 'sj' or 'iq', filter to that city.
         - If None, return all rows with 'city' one-hot encoded.
     """
+
     def __init__(self, city: str = None):
         self.city = city
         self.encoder_ = None
@@ -23,8 +25,8 @@ class CitySelector(BaseEstimator, TransformerMixin):
     def fit(self, X: pd.DataFrame, y=None):
         if self.city is None:
             # fit OneHotEncoder on all observed cities
-            self.encoder_ = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-            reshaped = X[['city']]
+            self.encoder_ = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+            reshaped = X[["city"]]
             self.encoder_.fit(reshaped)
             self.categories_ = self.encoder_.categories_[0].tolist()
         return self
@@ -33,14 +35,13 @@ class CitySelector(BaseEstimator, TransformerMixin):
         X = X.copy()
         if self.city is None:
             # one-hot encode with fitted encoder
-            encoded = self.encoder_.transform(X[['city']])
-            col_names = [f'city_{cat}' for cat in self.categories_]
+            encoded = self.encoder_.transform(X[["city"]])
+            col_names = [f"city_{cat}" for cat in self.categories_]
             df_enc = pd.DataFrame(encoded, columns=col_names, index=X.index)
-            X = pd.concat([X.drop(columns=['city']), df_enc], axis=1)
+            X = pd.concat([X.drop(columns=["city"]), df_enc], axis=1)
             return X.reset_index(drop=True)
         # else filter rows
-        return X[X['city'] == self.city].reset_index(drop=True)
-    
+        return X[X["city"] == self.city].reset_index(drop=True)
 
 
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -64,7 +65,7 @@ class OutlierRemover(BaseEstimator, TransformerMixin):
     method    : {'iqr', 'zscore'}, default='iqr'
         Outlier detection rule.
     threshold : float, default=1.5
-        • IQR  : multiplier of the inter-quartile range  
+        • IQR  : multiplier of the inter-quartile range
         • Z-score : maximum absolute Z-score
     """
 
@@ -113,34 +114,24 @@ class OutlierRemover(BaseEstimator, TransformerMixin):
     # --------------------------------------------------------------------- #
     #                              TRANSFORM                                #
     # --------------------------------------------------------------------- #
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        # short-circuit when disabled or no columns given
-        if not self.remove or self.columns is None:
-            return X.copy().reset_index(drop=True)
-
+    def transform(self, X):
         X = X.copy()
-        mask = pd.Series(True, index=X.index)
         method = self.method.lower()
-
-        columns = (
-            self.quartiles_.keys() if method == "iqr" else self.means_.keys()
-        )
-
-        for col in columns:
+        for col in self.columns or []:
             if method == "iqr":
-                q1, q3 = self.quartiles_[col]
-                iqr = q3 - q1
-                lower = q1 - self.threshold * iqr
-                upper = q3 + self.threshold * iqr
-                mask &= X[col].between(lower, upper)
-            else:  # z-score
-                mean = self.means_[col]
-                std = self.stds_[col]
-                mask &= ((X[col] - mean).abs() / std) <= self.threshold
-
-        return X.loc[mask].reset_index(drop=True)
-
-
+                Q1, Q3 = self.quartiles_[col]
+                IQR = Q3 - Q1
+                lower, upper = Q1 - self.threshold * IQR, Q3 + self.threshold * IQR
+                X[col] = X[col].clip(lower, upper)
+            else:  # zscore
+                m, s = self.means_[col], self.stds_[col]
+                z = (X[col] - m).abs() / s
+                # replace extreme with the threshold boundary
+                mask = z > self.threshold
+                X.loc[mask, col] = (
+                    m + np.sign(X.loc[mask, col] - m) * self.threshold * s
+                )
+        return X
 
 
 class CyclicTransformer(BaseEstimator, TransformerMixin):
@@ -156,6 +147,7 @@ class CyclicTransformer(BaseEstimator, TransformerMixin):
     drop_original : bool, default=True
         If True, drop the original column after transformation.
     """
+
     def __init__(self, column: str, period: int, drop_original: bool = True):
         self.column = column
         self.period = period
