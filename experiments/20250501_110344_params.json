@@ -1,0 +1,56 @@
+{
+  "drop_cols1": [
+    "city"
+  ],
+  "city_col": "city",
+  "cycle_cfg": {
+    "column": "weekofyear",
+    "period": 52
+  },
+  "outlier_cfg": {
+    "columns": [
+      "ndvi_ne",
+      "ndvi_nw",
+      "ndvi_se",
+      "ndvi_sw",
+      "precipitation_amt_mm",
+      "reanalysis_air_temp_k",
+      "reanalysis_avg_temp_k",
+      "reanalysis_max_air_temp_k",
+      "reanalysis_min_air_temp_k",
+      "reanalysis_precip_amt_kg_per_m2",
+      "reanalysis_relative_humidity_percent",
+      "reanalysis_specific_humidity_g_per_kg",
+      "reanalysis_tdtr_k",
+      "station_avg_temp_c",
+      "station_diur_temp_rng_c",
+      "station_max_temp_c",
+      "station_min_temp_c",
+      "station_precip_mm"
+    ],
+    "method": "zscore",
+    "threshold": 3.0
+  },
+  "models": [
+    "linear",
+    "ridge",
+    "lasso",
+    "elasticnet",
+    "bayesianridge",
+    "sgd",
+    "knn",
+    "svr",
+    "kernel_ridge",
+    "decision_tree",
+    "random_forest",
+    "extra_trees",
+    "gb",
+    "hist_gb",
+    "gp",
+    "mlp",
+    "xgb",
+    "lgbm",
+    "catboost"
+  ],
+  "cv_folds": 5
+}
