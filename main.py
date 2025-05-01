@@ -109,7 +109,9 @@ def run_city_experiment(city_code, df_train, df_test, models, config):
     print(f"\n=== CV RESULTS for city={city_code} ===")
     print(scores)
 
-    best_model = scores.sort_values("val_r2", ascending=False).iloc[0]["model"]
+    best_model = scores.sort_values("train_r2", ascending=False).iloc[0]["model"]
+
+    # scores.sort_values("val_r2", ascending=False).iloc[0]["model"]
     print(f"--> Best model for {city_code}: {best_model}")
 
     best_pipe = pipelines[best_model]
@@ -158,9 +160,9 @@ def main():
 
     # 6) Save
     submission.to_csv(
-        "src/data/predictions/two_models_outliers_removed_best_r2.csv", index=False
+        "src/data/predictions/two_models_outliers_removed_best_train.csv", index=False
     )
-    print("Wrote submission.csv in correct test‐file order.")
+    print("Wrote submission.csv in correct test‐file order .")
 
 
 if __name__ == "__main__":
