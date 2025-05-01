@@ -25,7 +25,7 @@ class CitySelector(BaseEstimator, TransformerMixin):
     def fit(self, X: pd.DataFrame, y=None):
         if self.city is None:
             # fit OneHotEncoder on all observed cities
-            self.encoder_ = OneHotEncoder(sparse=False, handle_unknown="ignore")
+            self.encoder_ = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
             reshaped = X[["city"]]
             self.encoder_.fit(reshaped)
             self.categories_ = self.encoder_.categories_[0].tolist()
@@ -44,18 +44,9 @@ class CitySelector(BaseEstimator, TransformerMixin):
         return X[X["city"] == self.city].reset_index(drop=True)
 
 
-from sklearn.base import BaseEstimator, TransformerMixin
-import numpy as np
-import pandas as pd
-
-
-from sklearn.base import BaseEstimator, TransformerMixin
-import pandas as pd
-
-
 class OutlierRemover(BaseEstimator, TransformerMixin):
     """
-    Remove outliers using IQR or Z-score.
+    Cap outliers using IQR or Z-score by setting extreme values to the boundary thresholds.
 
     Parameters
     ----------
@@ -84,6 +75,15 @@ class OutlierRemover(BaseEstimator, TransformerMixin):
         self.means_ = {}
         self.stds_ = {}
 
+    def get_params(self, deep=True):
+        # ensure clone can retrieve init parameters
+        return {
+            "columns": self.columns,
+            "remove": self.remove,
+            "method": self.method,
+            "threshold": self.threshold,
+        }
+
     def fit(self, X: pd.DataFrame, y=None):
         X = X.copy()
         method = self.method.lower()
@@ -92,15 +92,12 @@ class OutlierRemover(BaseEstimator, TransformerMixin):
         if self.columns is None:
             self._cols = []
         else:
-            if isinstance(self.columns, str):
-                cols = [self.columns]
-            else:
-                cols = list(self.columns)
-            # only keep those that actually exist in X
+            cols = (
+                [self.columns] if isinstance(self.columns, str) else list(self.columns)
+            )
             self._cols = [c for c in cols if c in X.columns]
             missing = set(cols) - set(self._cols)
             if missing:
-                # you can either warn or silently ignore
                 print(f"OutlierRemover: skipping missing columns {missing!r}")
 
         for col in self._cols:
@@ -115,25 +112,25 @@ class OutlierRemover(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame):
-        # if removal disabled, or no valid cols, just return a copy
-        if not self.remove or not self._cols:
-            return X.copy().reset_index(drop=True)
+        # if disabled or no valid cols, just return a copy
+        if not self.remove or not getattr(self, "_cols", None):
+            return X.copy()
 
         X = X.copy()
-        mask = pd.Series(True, index=X.index)
-        method = self.method.lower()
 
         for col in self._cols:
-            if method == "iqr":
+            if self.method.lower() == "iqr":
                 Q1, Q3 = self.quartiles_[col]
                 IQR = Q3 - Q1
                 lower, upper = Q1 - self.threshold * IQR, Q3 + self.threshold * IQR
-                mask &= X[col].between(lower, upper)
             else:  # zscore
                 m, s = self.means_[col], self.stds_[col]
-                mask &= ((X[col] - m).abs() / s) <= self.threshold
+                lower, upper = m - self.threshold * s, m + self.threshold * s
 
-        return X.loc[mask].reset_index(drop=True)
+            # cap values to the computed bounds
+            X[col] = X[col].clip(lower=lower, upper=upper)
+
+        return X
 
 
 class CyclicTransformer(BaseEstimator, TransformerMixin):

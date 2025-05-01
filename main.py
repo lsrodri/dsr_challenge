@@ -1,5 +1,3 @@
-# main.py
-
 import sys
 from pathlib import Path
 
@@ -12,6 +10,8 @@ import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_validate, TimeSeriesSplit
+from sklearn.ensemble import RandomForestRegressor
 
 from transformers.transformers_l import DropColumnsTransformer, CityBasedImputer
 from transformers.custom_transformers_mine import (
@@ -19,17 +19,22 @@ from transformers.custom_transformers_mine import (
     CyclicTransformer,
     OutlierRemover,
 )
+from transformers.rolling_mean_imputation import CityWiseRollingMeanImputer
 
-from models.models import get_models
-from analysis.evaluation import evaluate_pipelines, evaluate_pipelines_timeaware
 from analysis.persistence import save_results
 
-
+# ────────────────────────────────────────────────────────────
+# CONFIG
+# ────────────────────────────────────────────────────────────
 CONFIG = {
     "drop_cols1": [
         "week_start_date",
         "reanalysis_sat_precip_amt_mm",
         "reanalysis_dew_point_temp_k",
+        "ndvi_nw",
+        "ndvi_se",
+        "reanalysis_air_temp_k",
+        "reanalysis_tdtr_k",
     ],
     "drop_cols2": ["city"],
     "city_col": "city",
@@ -38,18 +43,14 @@ CONFIG = {
     "outlier_cfg": {
         "columns": [
             "ndvi_ne",
-            "ndvi_nw",
-            "ndvi_se",
             "ndvi_sw",
             "precipitation_amt_mm",
-            "reanalysis_air_temp_k",
             "reanalysis_avg_temp_k",
             "reanalysis_max_air_temp_k",
             "reanalysis_min_air_temp_k",
             "reanalysis_precip_amt_kg_per_m2",
             "reanalysis_relative_humidity_percent",
             "reanalysis_specific_humidity_g_per_kg",
-            "reanalysis_tdtr_k",
             "station_avg_temp_c",
             "station_diur_temp_rng_c",
             "station_max_temp_c",
@@ -58,88 +59,49 @@ CONFIG = {
         ],
         "remove": False,
         "method": "zscore",
-        "threshold": 3.0,
+        "threshold": 1.5,
     },
     "cv_folds": 5,
-    # ←── new keys for time-aware splitting ──→
-    "ts_test_size": 20,  # how many samples in each test fold
-    "ts_max_train_size": None,  # or an int to cap the training window
 }
 
 
-def build_pipelines(models, cfg):
-    pipes = {}
-    for name, mdl in models.items():
-        pipes[name] = Pipeline(
-            [
-                ("imputer_city", CityBasedImputer(city_column=cfg["city_col"])),
-                ("city_sel", CitySelector(city=None)),
-                ("drop1", DropColumnsTransformer(columns_to_drop=cfg["drop_cols1"])),
-                ("drop2", DropColumnsTransformer(columns_to_drop=cfg["drop_cols2"])),
-                (
-                    "cycle",
-                    CyclicTransformer(
-                        column=cfg["cycle_col"],
-                        period=cfg["period"],
-                        drop_original=True,
-                    ),
+def build_pipeline(cfg):
+    """
+    Build a single Pipeline using RandomForestRegressor.
+    """
+    return Pipeline(
+        [
+            # 1) city-based imputation
+            ("imputer_city", CityBasedImputer(city_column=cfg["city_col"])),
+            # 2) one-hot encode city
+            ("city_sel", CitySelector(city=None)),
+            # 3) rolling-mean imputer per city
+            ("rolling_imp", CityWiseRollingMeanImputer(window_size=3, min_periods=1)),
+            # 4) drop raw cols
+            ("drop1", DropColumnsTransformer(columns_to_drop=cfg["drop_cols1"])),
+            ("drop2", DropColumnsTransformer(columns_to_drop=cfg["drop_cols2"])),
+            # 5) cyclic encode the week
+            (
+                "cycle",
+                CyclicTransformer(
+                    column=cfg["cycle_col"],
+                    period=cfg["period"],
+                    drop_original=True,
                 ),
-                ("outlier", OutlierRemover(**cfg["outlier_cfg"])),
-                ("imputer_final", SimpleImputer(strategy="mean")),
-                ("scaler", StandardScaler()),
-                ("estimator", mdl),
-            ]
-        )
-    return pipes
-
-
-def run_city_experiment(city_code, df_train, df_test, models, config):
-    """
-    1) CV on df_train, select best by val_r2
-    2) Retrain best on full df_train
-    3) Predict on df_test
-    4) Return a DataFrame with city,year,weekofyear,total_cases
-    """
-    X = df_train.drop(columns=["total_cases"])
-    y = df_train["total_cases"]
-
-    pipelines = build_pipelines(models, config)
-
-    #    scores = evaluate_pipelines(pipelines, X, y, cv=config["cv_folds"])
-    # 3) time-aware CV
-    print("Running time-aware cross-validation…")
-    scores = evaluate_pipelines_timeaware(
-        pipelines,
-        X,
-        y,
-        n_splits=CONFIG["cv_folds"],
-        test_size=CONFIG["ts_test_size"],
-        max_train_size=CONFIG["ts_max_train_size"],
-        scoring=("r2", "neg_mean_squared_error", "neg_mean_absolute_error"),
+            ),
+            # 6) remove outliers
+            ("outlier", OutlierRemover(**cfg["outlier_cfg"])),
+            # 7) fill any remaining gaps & scale
+            ("imputer_final", SimpleImputer(strategy="mean")),
+            ("scaler", StandardScaler()),
+            # 8) the Random Forest model
+            ("estimator", RandomForestRegressor(n_estimators=100, random_state=0)),
+        ]
     )
-
-    print(f"\n=== CV RESULTS for city={city_code} ===")
-    print(scores)
-
-    best_model = scores.sort_values("train_r2", ascending=False).iloc[0]["model"]
-    print(f"--> Best model for {city_code}: {best_model}")
-
-    best_pipe = pipelines[best_model]
-    best_pipe.fit(X, y)
-
-    # get predictions (log scale) and invert
-    preds_log = best_pipe.predict(df_test)
-    preds = np.expm1(preds_log).round().astype(int)
-
-    sub = df_test[["city", "year", "weekofyear"]].copy()
-    sub["total_cases"] = preds
-    return sub
 
 
 def main():
-    # ────────────────────────────────────────────────────────
     # 1) Load & prep train
-    # ────────────────────────────────────────────────────────
     feats = pd.read_csv("src/data/raw/dengue_features_train.csv")
     labels = pd.read_csv("src/data/raw/dengue_labels_train.csv")
     df = feats.merge(labels, on=["city", "year", "weekofyear"], how="inner")
@@ -148,60 +110,58 @@ def main():
     X = df.drop(columns=["total_cases"])
     y = df["total_cases"]
 
-    # ────────────────────────────────────────────────────────
-    # 2) Build & CV all pipelines
-    # ────────────────────────────────────────────────────────
-    models = get_models(random_state=0)
-    pipelines = build_pipelines(models, CONFIG)
+    # 2) Build our single pipeline
+    pipe = build_pipeline(CONFIG)
 
-    print("Running cross‐validation...")
-    scores = evaluate_pipelines(
-        pipelines,
+    # 3) TimeSeries CV
+    tscv = TimeSeriesSplit(n_splits=CONFIG["cv_folds"])
+    scoring = ("r2", "neg_mean_squared_error", "neg_mean_absolute_error")
+
+    print("⏱ Running time-aware CV…")
+    cvres = cross_validate(
+        pipe,
         X,
         y,
-        cv=CONFIG["cv_folds"],
-        scoring=("r2", "neg_mean_squared_error", "neg_mean_absolute_error"),
+        cv=tscv,
+        scoring=scoring,
+        return_train_score=True,
+        n_jobs=-1,
     )
+
+    # aggregate
+    results = {"metric": [], "train_mean": [], "val_mean": []}
+    for metric in scoring:
+        tr = cvres[f"train_{metric}"].mean()
+        te = cvres[f"test_{metric}"].mean()
+        name = metric[4:] if metric.startswith("neg_") else metric
+        if metric.startswith("neg_"):
+            tr, te = -tr, -te
+        results["metric"].append(name)
+        results["train_mean"].append(tr)
+        results["val_mean"].append(te)
+
+    df_scores = pd.DataFrame(results)
     print("\n=== CV RESULTS ===")
-    print(scores)
+    print(df_scores)
 
-    # ────────────────────────────────────────────────────────
-    # 3) Pick best by train_r2
-    # ────────────────────────────────────────────────────────
-    best_model = scores.sort_values("train_r2", ascending=False).iloc[0]["model"]
-    print(f"\n✅ Best model by TRAIN R²: {best_model}")
+    save_results(df_scores, {"config": CONFIG, "model": "RandomForest"})
 
-    # persist experiment metadata + scores
-    save_results(
-        scores,
-        {"config": CONFIG, "models": list(models.keys()), "best_model": best_model},
-    )
+    # 4) Retrain on full data & predict test
+    print("\n🏋️ Retraining on full training set…")
+    pipe.fit(X, y)
 
-    # ────────────────────────────────────────────────────────
-    # 4) Retrain on full train set
-    # ────────────────────────────────────────────────────────
-    best_pipe = pipelines[best_model]
-    best_pipe.fit(X, y)
-
-    # ────────────────────────────────────────────────────────
-    # 5) Load test, predict, undo log
-    # ────────────────────────────────────────────────────────
     test = pd.read_csv("src/data/raw/dengue_features_test.csv")
     submission = test[["city", "year", "weekofyear"]].copy()
 
-    preds_log = best_pipe.predict(test)
+    # undo log1p
+    preds_log = pipe.predict(test)
     preds = np.expm1(preds_log).round().astype(int)
     submission["total_cases"] = preds
 
-    # ────────────────────────────────────────────────────────
-    # 6) Write submission.csv
-    # ────────────────────────────────────────────────────────
-    submission.to_csv(
-
-        "src/data/predictions/two_models_time_aware_CV_best_train_r2.csv", index=False
-
-    )
-    print("✅ Wrote submission.csv")
+    # 5) Write
+    out_path = "src/data/predictions/one_model_random_forest_rolling_week_3_drop_More_columns.csv"
+    submission.to_csv(out_path, index=False)
+    print(f"✅ Wrote submission to {out_path}")
 
 
 if __name__ == "__main__":
