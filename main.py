@@ -43,9 +43,10 @@ def build_pipelines(models, config):
     pipes = {}
     for name, mdl in models.items():
         pipes[name] = Pipeline([
+            ('drop_cols1',    DropColumnsTransformer(columns_to_drop=config['drop_cols1'])),
             ('imputer_city', CityBasedImputer(city_column=config['city_col'])),
             ('city_sel',     CitySelector(city=None)),
-            ('drop_cols',    DropColumnsTransformer(columns_to_drop=config['drop_cols'])),
+            ('drop_cols2',    DropColumnsTransformer(columns_to_drop=config['drop_cols2'])),
             ('cyclic',       CyclicTransformer(
                                  column=config['cycle_col'],
                                  period=config['period'],
@@ -77,7 +78,10 @@ def main():
     # 3) Pipeline configuration
     config = {
     # correct spelling ↓↓↓
-    'drop_cols':   ['week_start_date'],     # drop the date string column
+    'drop_cols1':   ['week_start_date', 
+                     'reanalysis_sat_prescip_amt_mm',
+                     'reanalysis_dew_point_temp_k'],  
+    'drop_cols2':   ['city'],                   # drop the date string column
     'city_col':    'city',
     'cycle_col':   'weekofyear',
     'period':      52,
