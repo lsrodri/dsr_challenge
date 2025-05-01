@@ -25,7 +25,7 @@ class CitySelector(BaseEstimator, TransformerMixin):
     def fit(self, X: pd.DataFrame, y=None):
         if self.city is None:
             # fit OneHotEncoder on all observed cities
-            self.encoder_ = OneHotEncoder(sparse=False, handle_unknown="ignore")
+            self.encoder_ = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
             reshaped = X[["city"]]
             self.encoder_.fit(reshaped)
             self.categories_ = self.encoder_.categories_[0].tolist()

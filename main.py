@@ -14,6 +14,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 
 from transformers.transformers_l import DropColumnsTransformer, CityBasedImputer
+from transformers.interpolation_imputation import InterpolationImputer
 from transformers.custom_transformers_mine import (
     CitySelector,
     CyclicTransformer,
@@ -73,6 +74,7 @@ def build_pipelines(models, cfg):
         pipes[name] = Pipeline(
             [
                 ("imputer_city", CityBasedImputer(city_column=cfg["city_col"])),
+                # ("imputer_city", InterpolationImputer()),
                 ("city_sel", CitySelector(city=None)),
                 ("drop1", DropColumnsTransformer(columns_to_drop=cfg["drop_cols1"])),
                 ("drop2", DropColumnsTransformer(columns_to_drop=cfg["drop_cols2"])),
@@ -168,7 +170,9 @@ def main():
     # ────────────────────────────────────────────────────────
     # 3) Pick best by train_r2
     # ────────────────────────────────────────────────────────
-    best_model = scores.sort_values("train_r2", ascending=False).iloc[0]["model"]
+    best_model = scores.sort_values("train_mean_absolute_error", ascending=False).iloc[
+        0
+    ]["model"]
     print(f"\n✅ Best model by TRAIN R²: {best_model}")
 
     # persist experiment metadata + scores
@@ -197,9 +201,8 @@ def main():
     # 6) Write submission.csv
     # ────────────────────────────────────────────────────────
     submission.to_csv(
-
-        "src/data/predictions/two_models_time_aware_CV_best_train_r2.csv", index=False
-
+        "src/data/predictions/one_model_interpolation_vik_1st_submission.csv",
+        index=False,
     )
     print("✅ Wrote submission.csv")
 
