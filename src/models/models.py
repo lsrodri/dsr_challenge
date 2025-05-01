@@ -81,9 +81,5 @@ def get_models(random_state: int = 42) -> dict:
         )
     if LGBMRegressor is not None:
         models["lgbm"] = LGBMRegressor(n_estimators=100, random_state=random_state)
-    if CatBoostRegressor is not None:
-        models["catboost"] = CatBoostRegressor(
-            iterations=100, verbose=False, random_state=random_state
-        )
 
     return models
