@@ -98,7 +98,8 @@ def main():
 
     # 6) Save experiment details & results
     params = {
-        'drop_cols':  config['drop_cols'],
+        'drop_cols1':  config['drop_cols2'],
+        'drop_cols1':  config['drop_cols2'],
         'city_col':   config['city_col'],
         'cycle_cfg':  {'column': config['cycle_col'], 'period': config['period']},
         'outlier_cfg': config['outlier_cfg'],
