@@ -13,15 +13,18 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_validate, TimeSeriesSplit
 from sklearn.ensemble import RandomForestRegressor
 
-from transformers.transformers_l import DropColumnsTransformer, CityBasedImputer
+from transformers.data_wrapper_labels import DataFrameWrapper
+from transformers.transformers_l import (
+    DropColumnsTransformer,
+    CityBasedImputer,
+    RollingAverageTransformer,
+)
 from transformers.interpolation_imputation import InterpolationImputer
 from transformers.custom_transformers_mine import (
     CitySelector,
     CyclicTransformer,
     OutlierRemover,
 )
-from transformers.rolling_mean_imputation import CityWiseRollingMeanImputer
-
 from analysis.persistence import save_results
 
 # ────────────────────────────────────────────────────────────
@@ -74,10 +77,38 @@ def build_pipeline(cfg):
         [
             # 1) city-based imputation
             ("imputer_city", CityBasedImputer(city_column=cfg["city_col"])),
+            # 3) rolling-average features per city
+            (
+                "rolling_avg",
+                RollingAverageTransformer(
+                    columns=[
+                        "ndvi_ne",
+                        "ndvi_nw",
+                        "ndvi_se",
+                        "ndvi_sw",
+                        "precipitation_amt_mm",
+                        "reanalysis_air_temp_k",
+                        "reanalysis_avg_temp_k",
+                        "reanalysis_max_air_temp_k",
+                        "reanalysis_min_air_temp_k",
+                        "reanalysis_precip_amt_kg_per_m2",
+                        "reanalysis_relative_humidity_percent",
+                        "reanalysis_specific_humidity_g_per_kg",
+                        "reanalysis_tdtr_k",
+                        "station_avg_temp_c",
+                        "station_diur_temp_rng_c",
+                        "station_max_temp_c",
+                        "station_min_temp_c",
+                        "station_precip_mm",
+                    ],
+                    window=3,
+                    city_column=cfg["city_col"],
+                ),
+            ),
             # 2) one-hot encode city
             ("city_sel", CitySelector(city=None)),
-            # 3) rolling-mean imputer per city
-            ("rolling_imp", CityWiseRollingMeanImputer(window_size=3, min_periods=1)),
+            # # 3) rolling-mean imputer per city
+            # ("rolling_imp", CityBasedImputer(city_column="city")),
             # 4) drop raw cols
             ("drop1", DropColumnsTransformer(columns_to_drop=cfg["drop_cols1"])),
             ("drop2", DropColumnsTransformer(columns_to_drop=cfg["drop_cols2"])),
@@ -93,8 +124,8 @@ def build_pipeline(cfg):
             # 6) remove outliers
             ("outlier", OutlierRemover(**cfg["outlier_cfg"])),
             # 7) fill any remaining gaps & scale
-            ("imputer_final", SimpleImputer(strategy="mean")),
-            ("scaler", StandardScaler()),
+            ("imputer_final", DataFrameWrapper(SimpleImputer(strategy="mean"))),
+            ("scaler", DataFrameWrapper(StandardScaler())),
             # 8) the Random Forest model
             ("estimator", RandomForestRegressor(n_estimators=100, random_state=0)),
         ]
@@ -150,6 +181,32 @@ def main():
     # 4) Retrain on full data & predict test
     print("\n🏋️ Retraining on full training set…")
     pipe.fit(X, y)
+
+    #######
+    # 4.1) Feature importance ranking
+    print("\n📊 Feature importance ranking…")
+
+    # Create a preprocessing-only pipeline (everything except the model)
+    preprocessor = pipe[:-1]
+    X_transformed = preprocessor.transform(X)
+
+    # Try getting column names
+    try:
+        feature_names = X_transformed.columns  # Works if output is a DataFrame
+    except AttributeError:
+        # If output is a NumPy array, we manually assign names
+        # This is a fallback and will only work if we know the input mapping
+        feature_names = [f"feature_{i}" for i in range(X_transformed.shape[1])]
+
+    model = pipe.named_steps["estimator"]
+    importances = model.feature_importances_
+
+    feat_imp_df = pd.DataFrame(
+        {"feature": feature_names, "importance": importances}
+    ).sort_values(by="importance", ascending=False)
+
+    print(feat_imp_df.head(40))
+    #######
 
     test = pd.read_csv("src/data/raw/dengue_features_test.csv")
     submission = test[["city", "year", "weekofyear"]].copy()
