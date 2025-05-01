@@ -21,7 +21,7 @@ from transformers.custom_transformers_mine import (
 )
 
 from models.models import get_models
-from analysis.evaluation import evaluate_pipelines
+from analysis.evaluation import evaluate_pipelines, evaluate_pipelines_timeaware
 from analysis.persistence import save_results
 
 
@@ -60,11 +60,14 @@ CONFIG = {
             "station_min_temp_c",
             "station_precip_mm",
         ],
-        "remove": True,
+        "remove": False,
         "method": "zscore",
         "threshold": 3.0,
     },
     "cv_folds": 5,
+    # ←── new keys for time-aware splitting ──→
+    "ts_test_size": 20,  # how many samples in each test fold
+    "ts_max_train_size": None,  # or an int to cap the training window
 }
 
 
@@ -105,11 +108,24 @@ def run_city_experiment(city_code, df_train, df_test, models, config):
     y = df_train["total_cases"]
 
     pipelines = build_pipelines(models, config)
-    scores = evaluate_pipelines(pipelines, X, y, cv=config["cv_folds"])
+
+    #    scores = evaluate_pipelines(pipelines, X, y, cv=config["cv_folds"])
+    # 3) time-aware CV
+    print("Running time-aware cross-validation…")
+    scores = evaluate_pipelines_timeaware(
+        pipelines,
+        X,
+        y,
+        n_splits=CONFIG["cv_folds"],
+        test_size=CONFIG["ts_test_size"],
+        max_train_size=CONFIG["ts_max_train_size"],
+        scoring=("r2", "neg_mean_squared_error", "neg_mean_absolute_error"),
+    )
+
     print(f"\n=== CV RESULTS for city={city_code} ===")
     print(scores)
 
-    best_model = scores.sort_values("val_r2", ascending=False).iloc[0]["model"]
+    best_model = scores.sort_values("train_r2", ascending=False).iloc[0]["model"]
     print(f"--> Best model for {city_code}: {best_model}")
 
     best_pipe = pipelines[best_model]
@@ -158,7 +174,7 @@ def main():
 
     # 6) Save
     submission.to_csv(
-        "src/data/predictions/two_models_outliers_removed_best_r2.csv", index=False
+        "src/data/predictions/two_models_time_aware_CV_best_train_r2.csv", index=False
     )
     print("Wrote submission.csv in correct test‐file order.")
 

@@ -49,89 +49,91 @@ import numpy as np
 import pandas as pd
 
 
+from sklearn.base import BaseEstimator, TransformerMixin
+import pandas as pd
+
+
 class OutlierRemover(BaseEstimator, TransformerMixin):
     """
-    Removes rows containing outliers, detected column-wise by either
-    the Inter-Quartile Range (IQR) rule or the Z-score rule.
+    Remove outliers using IQR or Z-score.
 
     Parameters
     ----------
-    columns   : str | list[str] | None, default=None
-        Column(s) to check.  If None, the transformer is a no-op
-        (it returns the data unchanged).
-    remove    : bool, default=True
-        Whether to drop the outlier rows.  If False, the transformer
-        is also a no-op.
-    method    : {'iqr', 'zscore'}, default='iqr'
-        Outlier detection rule.
-    threshold : float, default=1.5
-        • IQR  : multiplier of the inter-quartile range
-        • Z-score : maximum absolute Z-score
+    columns : str or list of str or None
+        Which columns to consider. If None, does nothing.
+    remove : bool
+        If False, returns X unchanged.
+    method : {'iqr', 'zscore'}
+    threshold : float
     """
 
     def __init__(
         self,
-        columns: Union[str, List[str], None] = None,
+        columns=None,
         remove: bool = True,
         method: str = "iqr",
         threshold: float = 1.5,
     ):
-        # store parameters exactly as passed (for sklearn.clone)
         self.columns = columns
         self.remove = remove
         self.method = method
         self.threshold = threshold
 
-        # learned statistics
-        self.quartiles_: dict = {}
-        self.means_: dict = {}
-        self.stds_: dict = {}
+        # will be populated in fit()
+        self.quartiles_ = {}
+        self.means_ = {}
+        self.stds_ = {}
 
-    # --------------------------------------------------------------------- #
-    #                                FIT                                    #
-    # --------------------------------------------------------------------- #
     def fit(self, X: pd.DataFrame, y=None):
-        # if no columns specified or removal disabled, nothing to learn
-        if self.columns is None or not self.remove:
-            return self
-
-        cols = [self.columns] if isinstance(self.columns, str) else self.columns
+        X = X.copy()
         method = self.method.lower()
 
-        for col in cols:
+        # build list of columns to process, filtering out any missing ones
+        if self.columns is None:
+            self._cols = []
+        else:
+            if isinstance(self.columns, str):
+                cols = [self.columns]
+            else:
+                cols = list(self.columns)
+            # only keep those that actually exist in X
+            self._cols = [c for c in cols if c in X.columns]
+            missing = set(cols) - set(self._cols)
+            if missing:
+                # you can either warn or silently ignore
+                print(f"OutlierRemover: skipping missing columns {missing!r}")
+
+        for col in self._cols:
             if method == "iqr":
-                q1 = X[col].quantile(0.25)
-                q3 = X[col].quantile(0.75)
-                self.quartiles_[col] = (q1, q3)
+                Q1, Q3 = X[col].quantile(0.25), X[col].quantile(0.75)
+                self.quartiles_[col] = (Q1, Q3)
             elif method == "zscore":
                 self.means_[col] = X[col].mean()
                 self.stds_[col] = X[col].std(ddof=0)
             else:
                 raise ValueError("method must be 'iqr' or 'zscore'")
-
         return self
 
-    # --------------------------------------------------------------------- #
-    #                              TRANSFORM                                #
-    # --------------------------------------------------------------------- #
-    def transform(self, X):
+    def transform(self, X: pd.DataFrame):
+        # if removal disabled, or no valid cols, just return a copy
+        if not self.remove or not self._cols:
+            return X.copy().reset_index(drop=True)
+
         X = X.copy()
+        mask = pd.Series(True, index=X.index)
         method = self.method.lower()
-        for col in self.columns or []:
+
+        for col in self._cols:
             if method == "iqr":
                 Q1, Q3 = self.quartiles_[col]
                 IQR = Q3 - Q1
                 lower, upper = Q1 - self.threshold * IQR, Q3 + self.threshold * IQR
-                X[col] = X[col].clip(lower, upper)
+                mask &= X[col].between(lower, upper)
             else:  # zscore
                 m, s = self.means_[col], self.stds_[col]
-                z = (X[col] - m).abs() / s
-                # replace extreme with the threshold boundary
-                mask = z > self.threshold
-                X.loc[mask, col] = (
-                    m + np.sign(X.loc[mask, col] - m) * self.threshold * s
-                )
-        return X
+                mask &= ((X[col] - m).abs() / s) <= self.threshold
+
+        return X.loc[mask].reset_index(drop=True)
 
 
 class CyclicTransformer(BaseEstimator, TransformerMixin):
