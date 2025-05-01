@@ -8,14 +8,14 @@ from sklearn.linear_model import (
     Lasso,
     ElasticNet,
     BayesianRidge,
-    SGDRegressor
+    SGDRegressor,
 )
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import (
     RandomForestRegressor,
     ExtraTreesRegressor,
     GradientBoostingRegressor,
-    HistGradientBoostingRegressor
+    HistGradientBoostingRegressor,
 )
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
@@ -41,39 +41,49 @@ except ImportError:
 
 
 def get_models(random_state: int = 42) -> dict:
-    """
-    Return a dictionary of regression model instances.
+    """_summary_
 
-    Returns
-    -------
-    dict
-        Keys are short names; values are instantiated regressors.
+    Args:
+        random_state (int, optional): _description_. Defaults to 42.
+
+    Returns:
+        dict: _description_
     """
     models = {
-        'linear': LinearRegression(),
-        'ridge': Ridge(alpha=1.0, random_state=random_state),
-        'lasso': Lasso(alpha=0.1, random_state=random_state),
-        'elasticnet': ElasticNet(alpha=0.1, l1_ratio=0.5, random_state=random_state),
-        'bayesianridge': BayesianRidge(),
-        'sgd': SGDRegressor(max_iter=1000, tol=1e-3, random_state=random_state),
-        'knn': KNeighborsRegressor(n_neighbors=5),
-        'svr': SVR(C=1.0),
-        'kernel_ridge': KernelRidge(alpha=1.0),
-        'decision_tree': DecisionTreeRegressor(random_state=random_state),
-        'random_forest': RandomForestRegressor(n_estimators=100, random_state=random_state),
-        'extra_trees': ExtraTreesRegressor(n_estimators=100, random_state=random_state),
-        'gb': GradientBoostingRegressor(n_estimators=100, random_state=random_state),
-        'hist_gb': HistGradientBoostingRegressor(max_iter=100, random_state=random_state),
-        'gp': GaussianProcessRegressor(),
-       'mlp': MLPRegressor(hidden_layer_sizes=(100,), max_iter=500, random_state=random_state)
+        "linear": LinearRegression(),
+        "ridge": Ridge(alpha=1.0, random_state=random_state),
+        "lasso": Lasso(alpha=0.1, random_state=random_state),
+        "elasticnet": ElasticNet(alpha=0.1, l1_ratio=0.5, random_state=random_state),
+        "bayesianridge": BayesianRidge(),
+        "sgd": SGDRegressor(max_iter=1000, tol=1e-3, random_state=random_state),
+        "knn": KNeighborsRegressor(n_neighbors=5),
+        "svr": SVR(C=1.0),
+        "kernel_ridge": KernelRidge(alpha=1.0),
+        "decision_tree": DecisionTreeRegressor(random_state=random_state),
+        "random_forest": RandomForestRegressor(
+            n_estimators=100, random_state=random_state
+        ),
+        "extra_trees": ExtraTreesRegressor(n_estimators=100, random_state=random_state),
+        "gb": GradientBoostingRegressor(n_estimators=100, random_state=random_state),
+        "hist_gb": HistGradientBoostingRegressor(
+            max_iter=100, random_state=random_state
+        ),
+        "gp": GaussianProcessRegressor(),
+        "mlp": MLPRegressor(
+            hidden_layer_sizes=(100,), max_iter=500, random_state=random_state
+        ),
     }
 
     # Conditionally include third-party boosters
     if XGBRegressor is not None:
-        models['xgb'] = XGBRegressor(n_estimators=100, random_state=random_state, verbosity=0)
+        models["xgb"] = XGBRegressor(
+            n_estimators=100, random_state=random_state, verbosity=0
+        )
     if LGBMRegressor is not None:
-        models['lgbm'] = LGBMRegressor(n_estimators=100, random_state=random_state)
+        models["lgbm"] = LGBMRegressor(n_estimators=100, random_state=random_state)
     if CatBoostRegressor is not None:
-        models['catboost'] = CatBoostRegressor(iterations=100, verbose=False, random_state=random_state) 
+        models["catboost"] = CatBoostRegressor(
+            iterations=100, verbose=False, random_state=random_state
+        )
 
     return models
