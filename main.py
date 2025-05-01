@@ -13,14 +13,22 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_validate, TimeSeriesSplit
 from sklearn.ensemble import RandomForestRegressor
 
-from transformers.transformers_l import DropColumnsTransformer, CityBasedImputer
+from transformers.transformers_l import (
+    DropColumnsTransformer,
+    CityBasedImputer,
+    RollingAverageTransformer,
+)
 from transformers.interpolation_imputation import InterpolationImputer
 from transformers.custom_transformers_mine import (
     CitySelector,
     CyclicTransformer,
     OutlierRemover,
+    TempHumidityLagTransformer,
+    LaggedNDVIRainInteractionTransformer,
+    LaggedHeatHumidityStressIndexTransformer,
 )
-from transformers.rolling_mean_imputation import CityWiseRollingMeanImputer
+from transformers.interpolation_imputation import InterpolationImputer
+
 
 from analysis.persistence import save_results
 
@@ -68,17 +76,80 @@ CONFIG = {
 
 def build_pipeline(cfg):
     """
-    Build a single Pipeline using RandomForestRegressor.
+    Build a single Pipeline using RandomForestRegressor,
     """
     return Pipeline(
         [
             # 1) city-based imputation
             ("imputer_city", CityBasedImputer(city_column=cfg["city_col"])),
+            # Interaction features
+            (
+                "temp_hum_lag",
+                TempHumidityLagTransformer(
+                    tmin_col="reanalysis_min_air_temp_k",
+                    tmax_col="reanalysis_max_air_temp_k",
+                    rh_col="reanalysis_relative_humidity_percent",
+                    out_temp="temp_k",
+                    out_inter="temp_humidity",
+                    lags=(1, 3, 5),
+                    city_col=cfg["city_col"],
+                    sort_cols=["year", "weekofyear"],
+                ),
+            ),
+            # if you want additional lags, you can chain another instance:
+            # ("temp_hum_lag3", TempHumidityLagTransformer(..., lag=3, ...)),
+            # 4) compute NDVI×rain and lag it by weeks 1,3,5
+            (
+                "ndvi_rain_lags",
+                LaggedNDVIRainInteractionTransformer(
+                    ndvi_cols=("ndvi_ne", "ndvi_nw", "ndvi_se", "ndvi_sw"),
+                    rain_col="precipitation_amt_mm",
+                    out_ndvi="ndvi_mean",
+                    out_inter="rain_ndvi",
+                    lags=(1, 3, 5),
+                    city_col=cfg["city_col"],
+                    keep_ndvi_lags=False,
+                ),
+            ),
+            (
+                "heat_stress_lags",
+                LaggedHeatHumidityStressIndexTransformer(
+                    lags=(1, 3, 5), city_col=cfg["city_col"], keep_range_lags=True
+                ),
+            ),
+            # ("ndvi_rain", NDVIRainInteractionTransformer()),
+            # ("heat_humidity_stress", HeatHumidityStressIndexTransformer()),
+            # 3) rolling-average features per city
+            (
+                "rolling_avg",
+                RollingAverageTransformer(
+                    columns=[
+                        "ndvi_ne",
+                        "ndvi_nw",
+                        "ndvi_se",
+                        "ndvi_sw",
+                        "precipitation_amt_mm",
+                        "reanalysis_air_temp_k",
+                        "reanalysis_avg_temp_k",
+                        "reanalysis_max_air_temp_k",
+                        "reanalysis_min_air_temp_k",
+                        "reanalysis_precip_amt_kg_per_m2",
+                        "reanalysis_relative_humidity_percent",
+                        "reanalysis_specific_humidity_g_per_kg",
+                        "reanalysis_tdtr_k",
+                        "station_avg_temp_c",
+                        "station_diur_temp_rng_c",
+                        "station_max_temp_c",
+                        "station_min_temp_c",
+                        "station_precip_mm",
+                    ],
+                    window=3,
+                    city_column=cfg["city_col"],
+                ),
+            ),
             # 2) one-hot encode city
             ("city_sel", CitySelector(city=None)),
-            # 3) rolling-mean imputer per city
-            ("rolling_imp", CityWiseRollingMeanImputer(window_size=3, min_periods=1)),
-            # 4) drop raw cols
+            # 4) drop raw columns
             ("drop1", DropColumnsTransformer(columns_to_drop=cfg["drop_cols1"])),
             ("drop2", DropColumnsTransformer(columns_to_drop=cfg["drop_cols2"])),
             # 5) cyclic encode the week
@@ -160,7 +231,7 @@ def main():
     submission["total_cases"] = preds
 
     # 5) Write
-    out_path = "src/data/predictions/one_model_random_forest_rolling_week_3_drop_More_columns.csv"
+    out_path = "src/data/predictions/one_model_RF_interaction_features.csv"
     submission.to_csv(out_path, index=False)
     print(f"✅ Wrote submission to {out_path}")
 
