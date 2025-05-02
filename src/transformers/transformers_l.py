@@ -42,23 +42,34 @@ class DropColumnsTransformer(BaseEstimator, TransformerMixin):
 
 class CityBasedImputer(BaseEstimator, TransformerMixin):
     '''
-    Impute missing column values with mean, differentiated by city.
+    Impute missing column values with mean or median, differentiated by city.
 
     Requirements:
         - column "start_week_date" is dropped
         - column "city" is encoded into numerical values
 
     To apply call:
-    imputer = CityBasedImputer(city_column='city')
+    imputer = CityBasedImputer(city_column='city', strategy='mean')
     df_imputed = imputer.fit_transform(df)
     '''
-    def __init__(self, city_column):
-        self.city_column = city_column
-        self.city_means = {}
-
-    def fit(self, X, y=None):  # Changed parameter name and added y=None
+    def __init__(self, city_column, strategy='mean'):
         """
-        Fit method to calculate city-specific means for each column.
+        Initialize the CityBasedImputer.
+        
+        Parameters:
+        city_column (str): The name of the column containing city data
+        strategy (str): Imputation strategy - either 'mean' or 'median'
+        """
+        self.city_column = city_column
+        self.strategy = strategy
+        self.city_values = {}
+        
+        if strategy not in ['mean', 'median']:
+            raise ValueError("Strategy must be either 'mean' or 'median'")
+
+    def fit(self, X, y=None):
+        """
+        Fit method to calculate city-specific means or medians for each column.
         
         Parameters:
         X (pd.DataFrame): Input DataFrame.
@@ -75,15 +86,19 @@ class CityBasedImputer(BaseEstimator, TransformerMixin):
 
         # Loop through each city
         for city in X[self.city_column].unique():
-            # For each city, compute the mean for each column
+            # For each city, compute the mean/median for each column
             city_data = X[X[self.city_column] == city]
-            self.city_means[city] = city_data.mean(numeric_only=True)
+            
+            if self.strategy == 'mean':
+                self.city_values[city] = city_data.mean(numeric_only=True)
+            else:  # median
+                self.city_values[city] = city_data.median(numeric_only=True)
         
         return self  # Return self for method chaining
 
-    def transform(self, X):  # Changed parameter name
+    def transform(self, X):
         """
-        Transform method to impute missing values based on city-specific means.
+        Transform method to impute missing values based on city-specific means/medians.
         
         Parameters:
         X (pd.DataFrame): Input DataFrame.
@@ -96,17 +111,17 @@ class CityBasedImputer(BaseEstimator, TransformerMixin):
         
         # Loop through each city
         for city in X[self.city_column].unique():
-            if city in self.city_means:  # Check if city exists in city_means
-                # For each city, fill missing values with the computed mean of that city
+            if city in self.city_values:  # Check if city exists in city_values
+                # For each city, fill missing values with the computed value of that city
                 city_mask = X_imputed[self.city_column] == city
                 
-                for col in self.city_means[city].index:
+                for col in self.city_values[city].index:
                     if col in X_imputed.columns:
-                        X_imputed.loc[city_mask, col] = X_imputed.loc[city_mask, col].fillna(self.city_means[city][col])
+                        X_imputed.loc[city_mask, col] = X_imputed.loc[city_mask, col].fillna(self.city_values[city][col])
         
         return X_imputed
 
-    def fit_transform(self, X, y=None):  # Changed parameter names and added y=None
+    def fit_transform(self, X, y=None):
         """
         Fit and transform method to handle pipelines.
         
