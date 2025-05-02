@@ -358,3 +358,58 @@ class WeekOfYearFeatureTransformer(BaseEstimator, TransformerMixin):
         X[self.new_col_name].fillna(0, inplace=True)
         
         return X
+    
+class CompositeFeatureTransformer(BaseEstimator, TransformerMixin):
+    """
+    Transformer that combines related features into composite features
+    to reduce dimensionality while preserving signal.
+    """
+    
+    def __init__(self, drop_original=True):
+        self.drop_original = drop_original
+    
+    def fit(self, X, y=None):
+        return self
+    
+    def transform(self, X):
+        X_new = X.copy()
+        
+        # Temperature composite (average of related temperature readings)
+        temp_columns = [col for col in X.columns if 'temp' in col and col != 'station_diur_temp_rng_c']
+        if len(temp_columns) > 0:
+            X_new['composite_temperature'] = X_new[temp_columns].mean(axis=1)
+        
+        # Vegetation index composite
+        veg_columns = [col for col in X.columns if 'ndvi' in col]
+        if len(veg_columns) > 0:
+            X_new['composite_vegetation'] = X_new[veg_columns].mean(axis=1)
+        
+        # Humidity/moisture composite
+        humidity_columns = [col for col in X.columns if 'humidity' in col]
+        if len(humidity_columns) > 0:
+            X_new['composite_humidity'] = X_new[humidity_columns].mean(axis=1)
+        
+        # Precipitation composite
+        precip_columns = [col for col in X.columns if 'precip' in col]
+        if len(precip_columns) > 0:
+            X_new['composite_precipitation'] = X_new[precip_columns].mean(axis=1)
+        
+        # Preserve temperature range/variability as its own feature
+        if 'station_diur_temp_rng_c' in X.columns:
+            X_new['temp_variability'] = X_new['station_diur_temp_rng_c']
+        
+        # Create cyclical features for weekofyear
+        if 'weekofyear' in X.columns:
+            X_new['sin_week'] = np.sin(2 * np.pi * X['weekofyear']/52)
+            X_new['cos_week'] = np.cos(2 * np.pi * X['weekofyear']/52)
+        
+        # Drop original columns if requested
+        if self.drop_original:
+            columns_to_keep = ['city', 'year', 'weekofyear']
+            columns_to_keep.extend(['composite_temperature', 'composite_vegetation', 
+                                   'composite_humidity', 'composite_precipitation',
+                                   'temp_variability', 'sin_week', 'cos_week'])
+            
+            X_new = X_new[[col for col in columns_to_keep if col in X_new.columns]]
+        
+        return X_new
