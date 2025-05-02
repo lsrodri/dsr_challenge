@@ -416,3 +416,171 @@ class LaggedHeatHumidityStressIndexTransformer(BaseEstimator, TransformerMixin):
 
         # 4) restore original row order
         return X.sort_index()
+
+
+from sklearn.base import BaseEstimator, TransformerMixin
+import pandas as pd
+
+
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
+class MultiFeatureLagTransformer(BaseEstimator, TransformerMixin):
+    """
+    For each feature in ``feature_cols``, compute the specified ``lags``
+    (in weeks) within each city, sorted by ``sort_cols``.  Optionally fill
+    missing lag values.
+    """
+
+    def __init__(
+        self,
+        feature_cols=None,  # default to None
+        lags=(1,),  # default tuple of ints
+        city_col="city",
+        sort_cols=("year", "weekofyear"),
+        fill_value=None,
+    ):
+        # store exactly what's passed in
+        self.feature_cols = feature_cols
+        self.lags = lags
+        self.city_col = city_col
+        self.sort_cols = sort_cols
+        self.fill_value = fill_value
+
+    def fit(self, X, y=None):
+        # nothing to learn
+        return self
+
+    def transform(self, X):
+        X = X.copy()
+        # compute base if needed (e.g. NDVI mean has already been added upstream)
+        if all(c in X.columns for c in self.sort_cols + [self.city_col]):
+            X = X.sort_values(list(self.sort_cols) + [self.city_col])
+        else:
+            X = X.sort_index()
+
+        for feat in self.feature_cols or []:
+            for lag in self.lags or []:
+                col_name = f"{feat}_lag_{lag}"
+                shifted = X.groupby(self.city_col)[feat].shift(lag)
+                if self.fill_value is not None:
+                    shifted = shifted.fillna(self.fill_value)
+                X[col_name] = shifted
+
+        return X.sort_index()
+
+
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
+class RollingRainSumTransformer(BaseEstimator, TransformerMixin):
+    """
+    Compute a rolling‐window sum of rainfall per city.
+
+    Parameters
+    ----------
+    rain_col : str
+        The precipitation column to aggregate, e.g. "precipitation_amt_mm".
+    city_col : str
+        The city grouping column, e.g. "city".
+    window : int
+        The size of the rolling window (in weeks).
+    min_periods : int
+        Minimum number of observations in window to produce a sum.
+    out_col : str
+        Name of the new rolling‐sum column.
+    """
+
+    def __init__(
+        self,
+        rain_col: str = "precipitation_amt_mm",
+        city_col: str = "city",
+        window: int = 4,
+        min_periods: int = 1,
+        out_col: str = "rain_4w_sum",
+    ):
+        self.rain_col = rain_col
+        self.city_col = city_col
+        self.window = window
+        self.min_periods = min_periods
+        self.out_col = out_col
+
+    def fit(self, X, y=None):
+        # nothing to learn
+        return self
+
+    def transform(self, X):
+        X = X.copy()
+        # group-by city and roll
+        rolled = (
+            X.groupby(self.city_col)[self.rain_col]
+            .rolling(window=self.window, min_periods=self.min_periods)
+            .sum()
+            # after groupby+rolling, the index is a MultiIndex (city, original_index)
+            .reset_index(level=0, drop=True)
+        )
+        X[self.out_col] = rolled
+        return X
+
+
+from sklearn.base import BaseEstimator, TransformerMixin
+import pandas as pd
+
+
+from sklearn.base import BaseEstimator, TransformerMixin
+import pandas as pd
+
+
+class WeatherNDVIAnomalyTransformer(BaseEstimator, TransformerMixin):
+    """
+    Compute city‐and‐month anomalies for arbitrary numeric columns.
+    """
+
+    def __init__(
+        self,
+        anomaly_cols,
+        group_cols=None,
+        date_col=None,
+        month_col="month",
+        inplace=False,
+    ):
+        # store exactly what was passed in
+        self.anomaly_cols = anomaly_cols
+        self.group_cols = group_cols
+        self.date_col = date_col
+        self.month_col = month_col
+        self.inplace = inplace
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X = X.copy()
+
+        # Extract month if needed
+        if self.date_col is not None and self.month_col not in X:
+            X[self.month_col] = pd.to_datetime(X[self.date_col]).dt.month
+
+        # Figure out grouping columns
+        groups = (
+            self.group_cols if self.group_cols is not None else ["city", self.month_col]
+        )
+        missing = [c for c in groups if c not in X.columns]
+        if missing:
+            raise KeyError(f"Missing grouping cols: {missing}")
+
+        # Normalize the anomaly_cols into a list, here inside transform
+        cols = list(self.anomaly_cols)
+        for col in cols:
+            if col not in X.columns:
+                raise KeyError(f"`{col}` not in DataFrame")
+            monthly_mean = X.groupby(groups)[col].transform("mean")
+            if self.inplace:
+                X[col] = X[col] - monthly_mean
+            else:
+                X[f"{col}_anomaly"] = X[col] - monthly_mean
+
+        return X
