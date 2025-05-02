@@ -198,3 +198,163 @@ class RollingAverageTransformer(BaseEstimator, TransformerMixin):
             output_features.append(f'{col}_rolling_avg_{self.window}')
         
         return np.array(output_features)
+    
+class LagFeatureTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, columns, lag, city_column='city'):
+        """
+        Transformer to create lagged features for specified columns, grouped by city.
+
+        Parameters:
+        - columns (list): List of column names to create lagged features for.
+        - lag (int): Number of records in the past to look back.
+        - city_column (str): Column name representing the city for grouping.
+        """
+        self.columns = columns
+        self.lag = lag
+        self.city_column = city_column
+
+    def fit(self, X, y=None):
+        """
+        Fit method (no fitting required for this transformer).
+
+        Parameters:
+        - X (pd.DataFrame): Input DataFrame.
+        - y (pd.Series or None): Target variable (not used).
+
+        Returns:
+        - self: Returns the transformer instance.
+        """
+        return self
+
+    def transform(self, X):
+        """
+        Transform method to create lagged features.
+
+        Parameters:
+        - X (pd.DataFrame): Input DataFrame.
+
+        Returns:
+        - pd.DataFrame: Transformed DataFrame with lagged features added.
+        """
+        X = X.copy()  # Create a copy to avoid modifying the original DataFrame
+
+        # Create new lagged columns, grouped by city
+        for col in self.columns:
+            new_col_name = f'{col}_lag_{self.lag}'
+
+            # Initialize the new column with NaN values
+            X[new_col_name] = np.nan
+
+            # For each city, compute lagged values separately
+            for city in X[self.city_column].unique():
+                # Create a city mask
+                city_mask = X[self.city_column] == city
+
+                # Get indices for this city
+                city_indices = X[city_mask].index
+
+                # Compute lagged values for this city
+                city_lagged = X.loc[city_mask, col].shift(self.lag, fill_value=X.loc[city_mask, col].iloc[0])
+
+                # Assign the lagged values back to the original DataFrame
+                X.loc[city_indices, new_col_name] = city_lagged.values
+
+        return X
+
+    def get_feature_names_out(self, input_features=None):
+        """
+        Return feature names for output features.
+
+        Parameters:
+        - input_features (list or None): List of input feature names.
+
+        Returns:
+        - np.array: Array of output feature names.
+        """
+        if input_features is None:
+            input_features = self.columns
+
+        output_features = list(input_features)
+        for col in self.columns:
+            output_features.append(f'{col}_lag_{self.lag}')
+
+        return np.array(output_features)
+    
+class YearTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, year_col='year', base_year=1990):
+        """
+        Transformer to normalize the year column starting from a base year.
+
+        Parameters:
+        - year_col (str): The name of the year column.
+        - base_year (int): The year to start counting from (default is 1990).
+        """
+        self.year_col = year_col
+        self.base_year = base_year
+
+    def fit(self, X, y=None):
+        """
+        Fit method (no fitting required for this transformer).
+
+        Parameters:
+        - X (pd.DataFrame): Input DataFrame.
+        - y (pd.Series or None): Target variable (not used).
+
+        Returns:
+        - self: Returns the transformer instance.
+        """
+        return self
+
+    def transform(self, X):
+        """
+        Transform method to normalize the year column.
+
+        Parameters:
+        - X (pd.DataFrame): Input DataFrame.
+
+        Returns:
+        - pd.DataFrame: Transformed DataFrame with the year column normalized.
+        """
+        X = X.copy()
+        X[self.year_col + '_transformed'] = X[self.year_col] - self.base_year + 1
+        X = X.drop(self.year_col, axis=1)
+        return X
+
+from sklearn.base import BaseEstimator, TransformerMixin
+import pandas as pd
+
+class WeekOfYearFeatureTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, week_col='weekofyear', target_col='total_cases', new_col_name='weekofyear_avg_cases'):
+        self.week_col = week_col
+        self.target_col = target_col
+        self.new_col_name = new_col_name
+        self.week_avg_cases = None
+
+    def fit(self, X, y=None):
+        """
+        Compute the average total_cases for each weekofyear using the training data.
+        """
+        if y is None:
+            raise ValueError("Target variable `y` is required to compute weekofyear averages.")
+        
+        # Combine X and y to calculate averages
+        data = X.copy()
+        data[self.target_col] = y[self.target_col]
+        
+        # Compute the average total_cases for each weekofyear
+        self.week_avg_cases = data.groupby(self.week_col)[self.target_col].mean().to_dict()
+        return self
+
+    def transform(self, X):
+        """
+        Add the weekofyear_avg_cases feature to the dataset.
+        """
+        X = X.copy()
+        
+        # Map the computed averages to the weekofyear column
+        X[self.new_col_name] = X[self.week_col].map(self.week_avg_cases)
+        
+        # Fill missing values with 0 (in case of unseen weeks)
+        X[self.new_col_name].fillna(0, inplace=True)
+        
+        return X
