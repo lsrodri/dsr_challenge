@@ -260,6 +260,32 @@ def main():
     print("\n🏋️ Retraining on full training set…")
     pipe.fit(X, y)
 
+    #######
+    # 4.1) Feature importance ranking
+    print("\n📊 Feature importance ranking…")
+
+    # Create a preprocessing-only pipeline (everything except the model)
+    preprocessor = pipe[:-1]
+    X_transformed = preprocessor.transform(X)
+
+    # Try getting column names
+    try:
+        feature_names = X_transformed.columns  # Works if output is a DataFrame
+    except AttributeError:
+        # If output is a NumPy array, we manually assign names
+        # This is a fallback and will only work if we know the input mapping
+        feature_names = [f"feature_{i}" for i in range(X_transformed.shape[1])]
+
+    model = pipe.named_steps["estimator"]
+    importances = model.feature_importances_
+
+    feat_imp_df = pd.DataFrame(
+        {"feature": feature_names, "importance": importances}
+    ).sort_values(by="importance", ascending=False)
+
+    print(feat_imp_df.head(40))
+    #######
+
     test = pd.read_csv("src/data/raw/dengue_features_test.csv")
     submission = test[["city", "year", "weekofyear"]].copy()
 
