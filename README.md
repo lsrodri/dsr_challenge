@@ -60,6 +60,21 @@ pipeline = Pipeline(steps=[
 ])
 ```
 
+## Model Performance
+The graph above illustrates our model's internal validation performance when tested on a held-out portion of the training dataset. The visualization compares actual reported cases (blue line) against our model's predictions (orange line) throughout the validation period.
+
+![Model Performance Visualization](docs/graphs.png)
+
+## Performance Metrics
+While this graph represents our internal validation results, our final model achieved a Mean Absolute Error (MAE) score of 25.48 on the external competition test set. This external evaluation score reflects the model's true predictive performance on unseen data as evaluated by the DengueAI competition platform.
+
+Key observations from the validation graph:
+- The internal validation helped identify how well our model captures the seasonal trends in both San Juan and Iquitos
+- The visualization guided our feature engineering and hyperparameter tuning process
+- Areas where predictions deviate from actual values informed our iterative model improvements
+- This validation analysis was crucial in developing the final model that achieved the 25.48 MAE on the competition dataset
+- The external MAE score of 25.48 represents our official performance metric for the DengueAI challenge, demonstrating the effectiveness of our approach when applied to new, unseen dengue case data.
+
 ## Key Findings
 - Time-series features significantly improve prediction accuracy
 - City-specific patterns require specialized preprocessing
