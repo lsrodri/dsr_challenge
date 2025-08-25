@@ -13,6 +13,7 @@ dependencies:
   - xgboost                # if you’re using XGBoost
   - lightgbm               # if you’re using LightGBM
   - catboost               # if you’re using CatBoost
+  - streamlit
+  - seaborn
+  - plotly
 
-  - pip:
-    - -r requirements.txt
