@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 # allow imports from src/
-sys.path.append(str(Path(__file__).resolve().parent / "src"))
+sys.path.append(str(Path(__file__).resolve().parent / "../src"))
 
 import pandas as pd
 import numpy as np
